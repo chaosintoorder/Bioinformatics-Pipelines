@@ -1,0 +1,28 @@
+# Nextflow temporary files
+.nextflow*
+work/
+
+# huge binary files
+*.bam
+*.bam.bai
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.fastq
+*.fastq.gz
+
+# reference index files
+*.fai
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+
+*.log
+*.tmp
+*.bak
+
+# garbage
+.DS_Store
+Thumbs.db
