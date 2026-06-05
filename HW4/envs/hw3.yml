@@ -1,0 +1,14 @@
+name: hw3
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.2
+  - r-ggplot2
+  - fastqc
+  - trimmomatic
+  - sra-tools
+  - bwa
+  - samtools
+  - bcftools
+  - htslib
