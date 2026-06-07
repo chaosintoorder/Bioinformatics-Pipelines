@@ -1,76 +1,107 @@
+#!/usr/bin/env nextflow
+
 nextflow.enable.dsl = 2
 
-include { HW2_PIPELINE } from './modules/local/hw2'
+include { hw2_pipeline } from './modules/local/hw2'
 include { BCFTOOLS_MPILEUP } from './modules/nf-core/bcftools/mpileup'
 
-params.accession = ''
-params.samplesheet = ''
-params.reference = ''
-params.outdir = 'results'
-params.threads = 4
+params.reads = null
+params.sra_id = null
+params.samplesheet = null
+params.reference = null
+params.outdir = "results"
 params.save_mpileup = false
 
-workflow {
-    // Check inputs
-    def input_count = [params.accession, params.samplesheet].count { it }
-    if( input_count != 1 ) {
-        error "Use exactly one input: --accession or --samplesheet"
-    }
-    if( !params.reference ) {
-        error "Please provide --reference"
-    }
-    
-    // Run pipeline
-    HW2_PIPELINE()
-    
-    // Prepare BAM for variant calling
-    bam_for_variants = HW2_PIPELINE.out.bam.map { meta, bam, bai, flagstat ->
-        tuple(meta, bam, [], [])
-    }
-    
-    // Prepare reference with index
-    reference_with_index = HW2_PIPELINE.out.reference.map { meta, reference ->
-        def fai = file("${reference}.fai")
-        if (!fai.exists()) {
-            "samtools faidx ${reference}".execute()
-        }
-        tuple(meta, reference, fai)
-    }
-    
-    // Call variants
-    BCFTOOLS_MPILEUP(bam_for_variants, reference_with_index, params.save_mpileup)
-    
-    // Group by group and filter
-    variants_by_group = BCFTOOLS_MPILEUP.out.vcf
-        .map { meta, vcf -> tuple([group: meta.group], vcf) }
-        .groupTuple()
-    
-    FILTER_VARIANTS(variants_by_group)
+process index_reference {
+    tag "${meta.id}"
+    publishDir "${params.outdir}/reference", mode: 'copy'
+
+    input:
+        tuple val(meta), path(fasta)
+
+    output:
+        tuple val(meta), path(fasta), path("${fasta}.fai"), emit: reference
+
+    script:
+    """
+    samtools faidx $fasta
+    """
+
+    stub:
+    """
+    touch ${fasta}.fai
+    """
 }
 
-process FILTER_VARIANTS {
+process filter_variants {
     tag "${group_meta.group}"
     publishDir "${params.outdir}/filtered_variants", mode: 'copy'
 
     input:
-    tuple val(group_meta), path(vcfs)
+        tuple val(group_meta), path(vcfs)
 
     output:
-    tuple val(group_meta), path("${group_meta.group}_filtered")
+        tuple val(group_meta), path("${group_meta.group}_filtered"), emit: filtered
 
     script:
+    def vcf_args = vcfs.join(' ')
     """
     mkdir ${group_meta.group}_filtered
-    for vcf in ${vcfs}; do
+
+    for vcf in ${vcf_args}; do
         name=\$(basename "\$vcf" .vcf.gz)
-        bcftools view -i 'QUAL>=20' -Oz -o ${group_meta.group}_filtered/\${name}.filtered.vcf.gz "\$vcf"
-        tabix -p vcf -f ${group_meta.group}_filtered/\${name}.filtered.vcf.gz 2>/dev/null || true
+
+        bcftools view \\
+            -i 'QUAL>=20' \\
+            -Oz \\
+            -o ${group_meta.group}_filtered/\${name}.filtered.vcf.gz \\
+            "\$vcf"
+
+        tabix -p vcf -f ${group_meta.group}_filtered/\${name}.filtered.vcf.gz
     done
     """
 
     stub:
     """
     mkdir ${group_meta.group}_filtered
-    touch ${group_meta.group}_filtered/dummy.vcf.gz
+    touch ${group_meta.group}_filtered/${group_meta.group}.filtered.vcf.gz
+    touch ${group_meta.group}_filtered/${group_meta.group}.filtered.vcf.gz.tbi
     """
+}
+
+workflow {
+
+    def input_count = [params.reads, params.sra_id, params.samplesheet].count { it }
+
+    if (input_count != 1) {
+        error "Please provide exactly one input: '--samplesheet', '--reads' or '--sra_id'"
+    }
+
+    if (!params.reference) {
+        error "Please provide '--reference' to a genome fasta file"
+    }
+
+    hw2_pipeline()
+
+    reference_for_index = Channel.value(
+        tuple([id: 'reference'], file(params.reference, checkIfExists: true))
+    )
+
+    index_reference(reference_for_index)
+
+    reference_input = index_reference.out.reference.first()
+
+    bam_input = hw2_pipeline.out.bam.map { meta, bam, bai ->
+        tuple(meta, bam, [], [])
+    }
+
+    BCFTOOLS_MPILEUP(bam_input, reference_input, params.save_mpileup)
+
+    variants_by_group = BCFTOOLS_MPILEUP.out.vcf
+        .map { meta, vcf ->
+            tuple([group: meta.group], vcf)
+        }
+        .groupTuple()
+
+    filter_variants(variants_by_group)
 }

@@ -1,0 +1,4 @@
+sample,group,fastq_1,fastq_2
+SRR1175163,randomPCR,/home/student/Bioinformatics-Pipelines/HW4/reads/SRR1175163_1.fastq,/home/student/Bioinformatics-Pipelines/HW4/reads/SRR1175163_2.fastq
+SRR38739167,targetCapture,/home/student/Bioinformatics-Pipelines/HW4/reads/SRR38739167_1.fastq,/home/student/Bioinformatics-Pipelines/HW4/reads/SRR38739167_2.fastq
+SRR38739168,targetCapture,/home/student/Bioinformatics-Pipelines/HW4/reads/SRR38739168_1.fastq,/home/student/Bioinformatics-Pipelines/HW4/reads/SRR38739168_2.fastq
